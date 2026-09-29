@@ -1,80 +1,106 @@
+"use client";
+
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, Clock3, FileText, History, MessageSquareText } from "lucide-react";
-import { deliverables, type DeliverableStatus } from "@/data/deliverables";
+import { useState, type FormEvent } from "react";
+import { ArrowLeft, ChevronDown, ChevronUp, Copy, ExternalLink, FilePlus2, Plus, Trash2 } from "lucide-react";
+import { useWorkflows, linkTypes, taskStatuses, updateItem, reorder, progressForDeliverable, progressForPhases, type Check, type Cycle, type FileLink, type Phase, type Priority, type WorkflowTask } from "@/data/workflows";
 
-const statusStyles: Record<DeliverableStatus, string> = {
-  "Not started": "bg-[#eef2ee] text-[#5f6d63]",
-  "In progress": "bg-[#e9f1f7] text-[#456f8b]",
-  "Needs scheduling": "bg-[#fff2e5] text-[#a36a2e]",
-};
+const inputClass = "w-full rounded-md border border-[#e2e8e3] bg-white px-2.5 py-2 text-xs text-[#354339] outline-none focus:border-[#6a9b78] focus:ring-2 focus:ring-[#287b4f]/15";
+const provinces = ["British Columbia", "Alberta", "Saskatchewan", "Manitoba", "Ontario", "Quebec", "New Brunswick", "Nova Scotia", "Prince Edward Island", "Newfoundland and Labrador", "Yukon", "Northwest Territories", "Nunavut"];
+const newId = () => crypto.randomUUID();
 
-function formatDueDate(date: string | null) {
-  if (!date) return "Not scheduled";
-  const parsedDate = new Date(`${date}T00:00:00`);
-  return Number.isNaN(parsedDate.getTime())
-    ? date
-    : parsedDate.toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
+function Progress({ value }: { value: number }) { return <div className="flex items-center gap-2"><div className="h-2 flex-1 rounded-full bg-[#eef2ee]"><div className="h-full rounded-full bg-[#287b4f] transition-[width]" style={{ width: `${value}%` }} /></div><span className="text-xs tabular-nums">{value}%</span></div>; }
+function LinkList({ links, onAdd, onDelete }: { links: FileLink[]; onAdd: (link: FileLink) => void; onDelete: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const url = String(data.get("url")).trim();
+    try { if (!["http:", "https:"].includes(new URL(url).protocol)) return; } catch { return; }
+    onAdd({ id: newId(), displayName: String(data.get("displayName")).trim(), type: String(data.get("type")) as FileLink["type"], url, description: String(data.get("description")).trim(), relatedRecord: String(data.get("relatedRecord")).trim() });
+    form.reset(); setOpen(false);
+  }
+  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="flex min-w-0 items-center gap-2 text-xs"><a href={link.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-[#dbe5dc] bg-white px-2.5 py-1.5 font-semibold text-[#287b4f] hover:bg-[#edf4ee]"><ExternalLink size={13} /><span className="truncate">{link.displayName}</span></a><span className="truncate text-[#89948c]">{link.type}{link.description ? ` · ${link.description}` : ""}</span><button type="button" aria-label={`Remove ${link.displayName}`} onClick={() => onDelete(link.id)} className="ml-auto text-[#89948c] hover:text-red-700"><Trash2 size={14} /></button></div>)}<button type="button" onClick={() => setOpen((value) => !value)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#287b4f]"><FilePlus2 size={14} /> Add link</button>{open && <form onSubmit={submit} className="grid gap-2 rounded-md bg-[#f7f9f7] p-3 sm:grid-cols-2"><input required name="displayName" placeholder="Display name" className={inputClass} /><select name="type" className={inputClass}>{linkTypes.map((type) => <option key={type}>{type}</option>)}</select><input required type="url" name="url" placeholder="https://..." className={`${inputClass} sm:col-span-2`} /><input name="description" placeholder="Description" className={inputClass} /><input name="relatedRecord" placeholder="Related record" className={inputClass} /><button className="h-9 rounded-md bg-[#287b4f] px-3 text-xs font-semibold text-white sm:col-span-2">Save link</button></form>}</div>;
 }
 
-function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-medium text-[#89948c]">{label}</dt>
-      <dd className="mt-1.5 break-words text-sm font-semibold text-[#354339]">{children}</dd>
-    </div>
-  );
+export default function DeliverableDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const { items, setItems } = useWorkflows();
+  const item = items.find((entry) => entry.id === id);
+  const [selectedProvinces, setSelectedProvinces] = useState<string[]>([]);
+  const [phaseOpen, setPhaseOpen] = useState<string | null>(null);
+  if (!item) return <div className="py-16 text-center"><h2 className="page-title">Deliverable not found</h2><Link href="/deliverables" className="mt-4 inline-block text-sm text-[#287b4f]">Back to deliverables</Link></div>;
+
+  const activeCycle = item.cycles.find((cycle) => cycle.status === "Active") ?? item.cycles[0];
+  const changeItem = (changes: Partial<typeof item>) => setItems((current) => updateItem(current, id, (entry) => ({ ...entry, ...changes, activity: [`Updated ${Object.keys(changes).join(", ")}`, ...entry.activity].slice(0, 12) })));
+  const updatePhase = (phaseId: string, change: Partial<Phase>) => changeItem({ cycles: item.cycles.map((cycle) => ({ ...cycle, phases: cycle.phases.map((phase) => phase.id === phaseId ? { ...phase, ...change } : phase) })) });
+  const updateTask = (phaseId: string, taskId: string, change: Partial<WorkflowTask>) => changeItem({ cycles: item.cycles.map((cycle) => ({ ...cycle, phases: cycle.phases.map((phase) => phase.id === phaseId ? { ...phase, tasks: phase.tasks.map((task) => task.id === taskId ? { ...task, ...change } : task) } : phase) })) });
+  const updateLinks = (target: "deliverable" | "phase" | "task", linkChange: (links: FileLink[]) => FileLink[], phaseId?: string, taskId?: string) => {
+    if (target === "deliverable") { changeItem({ links: linkChange(item.links) }); return; }
+    changeItem({ cycles: item.cycles.map((cycle) => ({ ...cycle, phases: cycle.phases.map((phase) => {
+      if (phase.id !== phaseId) return phase;
+      if (target === "phase") return { ...phase, links: linkChange(phase.links) };
+      return { ...phase, tasks: phase.tasks.map((task) => task.id === taskId ? { ...task, links: linkChange(task.links) } : task) };
+    }) })) });
+  };
+  const addLink = (target: "deliverable" | "phase" | "task", link: FileLink, phaseId?: string, taskId?: string) => updateLinks(target, (links) => [...links, link], phaseId, taskId);
+  const removeLink = (target: "deliverable" | "phase" | "task", linkId: string, phaseId?: string, taskId?: string) => updateLinks(target, (links) => links.filter((link) => link.id !== linkId), phaseId, taskId);
+  const addPhase = () => {
+    if (!activeCycle) return;
+    const phase: Phase = { id: newId(), name: "New phase", owner: "Unassigned", startDate: "", dueDate: "", status: "Not Started", notes: "", tasks: [], links: [] };
+    changeItem({ cycles: item.cycles.map((cycle) => cycle.id === activeCycle.id ? { ...cycle, phases: [...cycle.phases, phase] } : cycle) }); setPhaseOpen(phase.id);
+  };
+  const addCycle = () => {
+    const cycle: Cycle = { id: newId(), name: "New cycle", startDate: "", dueDate: "", status: "Active", phases: [], links: [] };
+    changeItem({ cycles: [...item.cycles.map((entry) => ({ ...entry, status: "Archived" as const })), cycle] });
+  };
+  const addTask = (phase: Phase, province = "") => {
+    const task: WorkflowTask = { id: newId(), name: province ? `Collect ${province} data` : "New task", province, owner: "Unassigned", reviewer: "Unassigned", startDate: "", dueDate: "", priority: "Medium", status: "Not Started", dependencies: [], blockedReason: "", notes: "", checks: [], links: [] };
+    updatePhase(phase.id, { tasks: [...phase.tasks, task] });
+  };
+  const addBulkTasks = (phase: Phase) => {
+    const additions = selectedProvinces.map((province): WorkflowTask => ({ id: newId(), name: `Collect ${province} data`, province, owner: "Unassigned", reviewer: "Unassigned", startDate: "", dueDate: "", priority: "Medium", status: "Not Started", dependencies: [], blockedReason: "", notes: "", checks: [], links: [] }));
+    updatePhase(phase.id, { tasks: [...phase.tasks, ...additions] });
+    setSelectedProvinces([]);
+  };
+  const formatDate = (date: string | null) => date ? new Date(`${date}T00:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "Not scheduled";
+
+  return <div className="page-enter mx-auto max-w-[1120px] space-y-6">
+    <Link href="/deliverables" className="inline-flex items-center gap-2 text-xs font-semibold text-[#68756c] hover:text-[#287b4f]"><ArrowLeft size={15} /> Back to deliverables</Link>
+    <section className="rounded-lg border border-[#e4e9e4] bg-white p-5 sm:p-7">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><span className="rounded-full bg-[#edf4ee] px-2.5 py-1 text-[10px] font-semibold text-[#287b4f]">{item.category}</span><input aria-label="Deliverable name" value={item.name} onChange={(event) => changeItem({ name: event.target.value })} className="page-title mt-4 block w-full bg-transparent" /><textarea aria-label="Description" value={item.description} onChange={(event) => changeItem({ description: event.target.value })} className="page-description mt-2 w-full resize-y bg-transparent" /></div><select aria-label="Lifecycle state" value={item.state} onChange={(event) => changeItem({ state: event.target.value as typeof item.state })} className={`${inputClass} max-w-40`}><option>Active</option><option>Draft</option><option>Archived</option></select></div>
+      <div className="mt-6 grid gap-3 border-t border-[#eef1ee] pt-5 sm:grid-cols-2 lg:grid-cols-4"><label className="text-[11px] text-[#78847c]">Category<select value={item.category} onChange={(event) => changeItem({ category: event.target.value as typeof item.category })} className={`${inputClass} mt-1`}>{[...new Set(items.map((entry) => entry.category))].map((category) => <option key={category}>{category}</option>)}</select></label><label className="text-[11px] text-[#78847c]">Frequency<input value={item.frequency} onChange={(event) => changeItem({ frequency: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[11px] text-[#78847c]">Primary owner<input value={item.owner} onChange={(event) => changeItem({ owner: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[11px] text-[#78847c]">Backup owner<input value={item.backupOwner} onChange={(event) => changeItem({ backupOwner: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[11px] text-[#78847c]">Status<input value={item.status} onChange={(event) => changeItem({ status: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[11px] text-[#78847c]">Priority<select value={item.priority} onChange={(event) => changeItem({ priority: event.target.value as Priority })} className={`${inputClass} mt-1`}>{["Low", "Medium", "High", "Urgent"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-[11px] text-[#78847c]">Next due date<input type="date" value={item.nextDueDate ?? ""} onChange={(event) => changeItem({ nextDueDate: event.target.value || null })} className={`${inputClass} mt-1`} /></label><label className="text-[11px] text-[#78847c]">Reporting schedule<input value={item.reportingSchedule} onChange={(event) => changeItem({ reportingSchedule: event.target.value })} className={`${inputClass} mt-1`} /></label></div>
+      <div className="mt-5 grid gap-3 border-t border-[#eef1ee] pt-5 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="mb-2 text-xs font-semibold">Overall progress · {activeCycle?.name ?? "No active cycle"}</p><Progress value={progressForDeliverable(item)} /></div><div className="text-xs text-[#68756c]">Next due: {formatDate(item.nextDueDate)}</div></div>
+      <div className="mt-5 border-t border-[#eef1ee] pt-4"><p className="mb-2 text-xs font-semibold">Documentation links</p><LinkList links={item.links} onAdd={(link) => addLink("deliverable", link)} onDelete={(linkId) => removeLink("deliverable", linkId)} /></div>
+    </section>
+    <section className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="display-font text-lg font-bold">Cycles and phases</h3><p className="mt-1 text-xs text-[#78847c]">Cycle progress excludes tasks marked Not Applicable.</p></div><button type="button" onClick={addCycle} className="inline-flex h-9 items-center gap-2 rounded-md border border-[#dbe5dc] bg-white px-3 text-xs font-semibold text-[#287b4f]"><Plus size={15} /> New cycle</button></section>
+    {item.cycles.map((cycle) => <section key={cycle.id} className="space-y-3"><div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e4e9e4] bg-[#f8faf8] px-4 py-3"><input aria-label="Cycle name" value={cycle.name} onChange={(event) => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, name: event.target.value } : entry) })} className="min-w-[180px] flex-1 bg-transparent text-sm font-bold" /><span className="text-xs text-[#68756c]">{cycle.status} · {progressForPhases(cycle.phases)}%</span><label className="text-[10px] text-[#78847c]">Start <input type="date" value={cycle.startDate} onChange={(event) => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, startDate: event.target.value } : entry) })} className={`${inputClass} mt-1 w-auto`} /></label><label className="text-[10px] text-[#78847c]">Due <input type="date" value={cycle.dueDate} onChange={(event) => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, dueDate: event.target.value } : entry) })} className={`${inputClass} mt-1 w-auto`} /></label></div>
+      <div className="space-y-3">{cycle.phases.map((phase, phaseIndex) => <article key={phase.id} className="overflow-hidden rounded-lg border border-[#e4e9e4] bg-white"><div className="flex flex-wrap items-center gap-2 px-4 py-3"><button type="button" onClick={() => setPhaseOpen(phaseOpen === phase.id ? null : phase.id)} aria-expanded={phaseOpen === phase.id} className="grid size-8 place-items-center rounded-md text-[#68756c] hover:bg-[#f3f6f3]"><ChevronDown size={17} className={phaseOpen === phase.id ? "rotate-180" : ""} /></button><input aria-label="Phase name" value={phase.name} onChange={(event) => updatePhase(phase.id, { name: event.target.value })} className="min-w-[170px] flex-1 bg-transparent text-sm font-bold" /><span className="text-xs text-[#68756c]">{progressForPhases([phase])}%</span><button type="button" title="Move phase up" disabled={phaseIndex === 0} onClick={() => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, phases: reorder(entry.phases, phaseIndex, phaseIndex - 1) } : entry) })} className="rounded p-1 text-[#68756c] disabled:opacity-30"><ChevronUp size={16} /></button><button type="button" title="Move phase down" disabled={phaseIndex === cycle.phases.length - 1} onClick={() => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, phases: reorder(entry.phases, phaseIndex, phaseIndex + 1) } : entry) })} className="rounded p-1 text-[#68756c] disabled:opacity-30"><ChevronDown size={16} /></button><button type="button" aria-label="Delete phase" onClick={() => { if (window.confirm(`Delete phase "${phase.name}" and its tasks?`)) changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, phases: entry.phases.filter((candidate) => candidate.id !== phase.id) } : entry) }); }} className="rounded p-1 text-[#89948c] hover:text-red-700"><Trash2 size={15} /></button></div>
+        {phaseOpen === phase.id && <div className="space-y-4 border-t border-[#eef1ee] p-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="text-[10px] text-[#78847c]">Owner<input value={phase.owner} onChange={(event) => updatePhase(phase.id, { owner: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Start date<input type="date" value={phase.startDate} onChange={(event) => updatePhase(phase.id, { startDate: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Due date<input type="date" value={phase.dueDate} onChange={(event) => updatePhase(phase.id, { dueDate: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Status<select value={phase.status} onChange={(event) => updatePhase(phase.id, { status: event.target.value as Phase["status"] })} className={`${inputClass} mt-1`}>{taskStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><label className="text-[10px] text-[#78847c] sm:col-span-2 lg:col-span-4">Phase notes<textarea value={phase.notes} onChange={(event) => updatePhase(phase.id, { notes: event.target.value })} className={`${inputClass} mt-1`} /></label></div>
+          <div className="space-y-3">{phase.tasks.map((task, taskIndex) => <TaskEditor key={task.id} task={task} taskIndex={taskIndex} phase={phase} allTasks={cycle.phases.flatMap((candidate) => candidate.tasks)} updateTask={updateTask} removeTask={() => updatePhase(phase.id, { tasks: phase.tasks.filter((entry) => entry.id !== task.id) })} duplicateTask={() => updatePhase(phase.id, { tasks: [...phase.tasks.slice(0, taskIndex + 1), { ...task, id: newId(), name: `${task.name} copy`, status: "Not Started", completedAt: undefined, checks: task.checks.map((entry) => ({ ...entry, id: newId(), completed: false, completedBy: "", completionDate: "" })), links: [...task.links] }, ...phase.tasks.slice(taskIndex + 1)] })} reorderTask={(to) => updatePhase(phase.id, { tasks: reorder(phase.tasks, taskIndex, to) })} addLink={(link) => addLink("task", link, phase.id, task.id)} removeLink={(linkId) => removeLink("task", linkId, phase.id, task.id)} />)}</div>
+          <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => addTask(phase)} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#287b4f] px-3 text-xs font-semibold text-white"><Plus size={14} /> Add task</button><select aria-label="Select provinces to add" multiple value={selectedProvinces} onChange={(event) => setSelectedProvinces(Array.from(event.target.selectedOptions, (option) => option.value))} className={`${inputClass} h-20 max-w-[240px]`}>{provinces.map((province) => <option key={province}>{province}</option>)}</select><button type="button" disabled={!selectedProvinces.length} onClick={() => addBulkTasks(phase)} className="h-9 rounded-md border border-[#dbe5dc] px-3 text-xs font-semibold text-[#287b4f] disabled:opacity-40">Create one task per selected province</button></div>
+          <div className="border-t border-[#eef1ee] pt-3"><p className="mb-2 text-xs font-semibold">Phase links</p><LinkList links={phase.links} onAdd={(link) => addLink("phase", link, phase.id)} onDelete={(linkId) => removeLink("phase", linkId, phase.id)} /></div>
+        </div>}</article>)}</div>
+      {cycle.id === activeCycle?.id && <button type="button" onClick={addPhase} className="inline-flex h-9 items-center gap-2 rounded-md border border-dashed border-[#9ab59f] px-3 text-xs font-semibold text-[#287b4f]"><Plus size={15} /> Add phase</button>}
+      <div className="rounded-lg border border-[#e4e9e4] bg-white p-4"><p className="mb-2 text-xs font-semibold">Cycle links</p><LinkList links={cycle.links} onAdd={(link) => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, links: [...entry.links, link] } : entry) })} onDelete={(linkId) => changeItem({ cycles: item.cycles.map((entry) => entry.id === cycle.id ? { ...entry, links: entry.links.filter((link) => link.id !== linkId) } : entry) })} /></div>
+    </section>)}
+    {!item.cycles.length && <div className="rounded-lg border border-dashed border-[#cfd9d0] bg-white p-10 text-center text-sm text-[#78847c]">No cycles created. Add a cycle to start managing phases and tasks.</div>}
+    <section className="rounded-lg border border-[#e4e9e4] bg-white p-5"><h3 className="display-font text-sm font-bold">Recent activity</h3>{item.activity.length ? <ul className="mt-3 space-y-2 text-xs text-[#68756c]">{item.activity.map((entry, index) => <li key={`${entry}-${index}`} className="border-t border-[#f0f3f0] pt-2">{entry}</li>)}</ul> : <p className="mt-3 text-xs text-[#89948c]">No recent changes.</p>}</section>
+  </div>;
 }
 
-function EmptySection({ children }: { children: React.ReactNode }) {
-  return <p className="min-h-[88px] rounded-md border border-dashed border-[#d9e2da] bg-[#f8faf8] px-4 py-5 text-sm leading-5 text-[#78847c]">{children}</p>;
-}
-
-export default async function DeliverableDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const deliverable = deliverables.find((item) => item.id === id);
-
-  if (!deliverable) notFound();
-
-  return (
-    <div className="page-enter mx-auto max-w-[1000px] space-y-6">
-      <Link href="/deliverables" className="inline-flex items-center gap-2 text-xs font-semibold text-[#68756c] hover:text-[#287b4f]">
-        <ArrowLeft size={15} /> Back to deliverables
-      </Link>
-
-      <section className="rounded-lg border border-[#e4e9e4] bg-white p-5 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <span className="inline-flex rounded-full bg-[#edf4ee] px-2.5 py-1 text-[10px] font-semibold leading-4 text-[#287b4f]">{deliverable.category}</span>
-            <h2 className="page-title mt-4">{deliverable.name}</h2>
-            <p className="page-description mt-2 max-w-[680px]">{deliverable.description}</p>
-          </div>
-          <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusStyles[deliverable.status]}`}>{deliverable.status}</span>
-        </div>
-
-        <dl className="mt-7 grid grid-cols-1 gap-5 border-t border-[#eef1ee] pt-5 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailField label="Category">{deliverable.category}</DetailField>
-          <DetailField label="Frequency"><span className="inline-flex items-center gap-1.5"><Clock3 size={14} className="text-[#89948c]" />{deliverable.frequency}</span></DetailField>
-          <DetailField label="Owner">{deliverable.owner}</DetailField>
-          <DetailField label="Status"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusStyles[deliverable.status]}`}>{deliverable.status}</span></DetailField>
-          <DetailField label="Next Due Date"><span className="inline-flex items-center gap-1.5"><CalendarDays size={14} className="text-[#89948c]" />{formatDueDate(deliverable.nextDueDate)}</span></DetailField>
-        </dl>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-lg border border-[#e4e9e4] bg-white p-5">
-          <div className="mb-4 flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-md bg-[#e9f1f7] text-[#557e98]"><FileText size={16} /></span><h3 className="display-font text-sm font-bold">Documentation</h3></div>
-          <EmptySection>No documentation has been added yet.</EmptySection>
-        </article>
-        <article className="rounded-lg border border-[#e4e9e4] bg-white p-5">
-          <div className="mb-4 flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-md bg-[#fff2e5] text-[#b0783b]"><MessageSquareText size={16} /></span><h3 className="display-font text-sm font-bold">Notes</h3></div>
-          <EmptySection>No notes have been added yet.</EmptySection>
-        </article>
-        <article className="rounded-lg border border-[#e4e9e4] bg-white p-5">
-          <div className="mb-4 flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-md bg-[#e7f3eb] text-[#287b4f]"><History size={16} /></span><h3 className="display-font text-sm font-bold">History</h3></div>
-          <EmptySection>No activity has been recorded yet.</EmptySection>
-        </article>
-      </section>
-    </div>
-  );
+function TaskEditor({ task, taskIndex, phase, allTasks, updateTask, removeTask, duplicateTask, reorderTask, addLink, removeLink }: { task: WorkflowTask; taskIndex: number; phase: Phase; allTasks: WorkflowTask[]; updateTask: (phaseId: string, taskId: string, change: Partial<WorkflowTask>) => void; removeTask: () => void; duplicateTask: () => void; reorderTask: (index: number) => void; addLink: (link: FileLink) => void; removeLink: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const patch = (change: Partial<WorkflowTask>) => updateTask(phase.id, task.id, change);
+  const setCheck = (checkId: string, change: Partial<Check>) => patch({ checks: task.checks.map((entry) => entry.id === checkId ? { ...entry, ...change } : entry) });
+  const setStatus = (status: WorkflowTask["status"]) => {
+    if (status === "Completed") { const missing = task.checks.filter((entry) => entry.required && !entry.completed); if (missing.length && !window.confirm(`${missing.length} required check(s) remain incomplete. Mark this task completed anyway?`)) return; }
+    patch({ status, completedAt: status === "Completed" ? new Date().toISOString() : undefined });
+  };
+  const addCheck = () => patch({ checks: [...task.checks, { id: newId(), description: "New check", required: true, completed: false, completedBy: "", completionDate: "", notes: "" }] });
+  return <article className="rounded-md border border-[#e4e9e4] bg-[#fbfcfb] p-3"><div className="flex flex-wrap items-center gap-2"><button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-semibold"><ChevronDown size={15} className={open ? "rotate-180" : ""} /><span className="truncate">{task.name}{task.province ? ` · ${task.province}` : task.market ? ` · ${task.market}` : ""}</span></button><select aria-label={`${task.name} status`} value={task.status} onChange={(event) => setStatus(event.target.value as WorkflowTask["status"])} className={`${inputClass} w-auto min-w-[145px]`}>{taskStatuses.map((status) => <option key={status}>{status}</option>)}</select><button type="button" title="Move task up" disabled={taskIndex === 0} onClick={() => reorderTask(taskIndex - 1)} className="p-1 text-[#68756c] disabled:opacity-30"><ChevronUp size={15} /></button><button type="button" title="Move task down" disabled={taskIndex === phase.tasks.length - 1} onClick={() => reorderTask(taskIndex + 1)} className="p-1 text-[#68756c] disabled:opacity-30"><ChevronDown size={15} /></button><button type="button" title="Duplicate task" onClick={duplicateTask} className="p-1 text-[#68756c]"><Copy size={14} /></button><button type="button" title="Delete task" onClick={() => { if (window.confirm(`Delete task "${task.name}"?`)) removeTask(); }} className="p-1 text-[#89948c] hover:text-red-700"><Trash2 size={14} /></button></div>
+    {open && <div className="mt-3 grid gap-3 border-t border-[#e9eeea] pt-3 sm:grid-cols-2 lg:grid-cols-4"><label className="text-[10px] text-[#78847c]">Task name<input value={task.name} onChange={(event) => patch({ name: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Province<input value={task.province ?? ""} onChange={(event) => patch({ province: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Market<input value={task.market ?? ""} onChange={(event) => patch({ market: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Owner<input value={task.owner} onChange={(event) => patch({ owner: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Reviewer<input value={task.reviewer} onChange={(event) => patch({ reviewer: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Start date<input type="date" value={task.startDate} onChange={(event) => patch({ startDate: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Due date<input type="date" value={task.dueDate} onChange={(event) => patch({ dueDate: event.target.value })} className={`${inputClass} mt-1`} /></label><label className="text-[10px] text-[#78847c]">Priority<select value={task.priority} onChange={(event) => patch({ priority: event.target.value as Priority })} className={`${inputClass} mt-1`}>{["Low", "Medium", "High", "Urgent"].map((priority) => <option key={priority}>{priority}</option>)}</select></label><label className="text-[10px] text-[#78847c] sm:col-span-2">Dependencies<select multiple value={task.dependencies} onChange={(event) => patch({ dependencies: Array.from(event.target.selectedOptions, (option) => option.value) })} className={`${inputClass} mt-1 h-20`}>{allTasks.filter((entry) => entry.id !== task.id).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>{task.status === "Blocked" && <label className="text-[10px] text-[#78847c] sm:col-span-2">Blocked reason<input value={task.blockedReason} onChange={(event) => patch({ blockedReason: event.target.value })} className={`${inputClass} mt-1`} /></label>}<label className="text-[10px] text-[#78847c] sm:col-span-2 lg:col-span-4">Notes<textarea value={task.notes} onChange={(event) => patch({ notes: event.target.value })} className={`${inputClass} mt-1`} /></label>
+      <div className="sm:col-span-2 lg:col-span-4"><div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-semibold">Checks</h4><button type="button" onClick={addCheck} className="inline-flex items-center gap-1 text-xs font-semibold text-[#287b4f]"><Plus size={13} /> Add check</button></div>{task.checks.length ? <div className="space-y-2">{task.checks.map((entry) => <div key={entry.id} className="grid gap-2 rounded-md border border-[#e9eeea] bg-white p-2 sm:grid-cols-[auto_1fr_auto_auto] sm:items-center"><input type="checkbox" aria-label={`Complete check ${entry.description}`} checked={entry.completed} onChange={(event) => setCheck(entry.id, { completed: event.target.checked, completedBy: event.target.checked ? entry.completedBy : "", completionDate: event.target.checked ? new Date().toISOString().slice(0, 10) : "" })} /><input value={entry.description} onChange={(event) => setCheck(entry.id, { description: event.target.value })} className={inputClass} /><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={entry.required} onChange={(event) => setCheck(entry.id, { required: event.target.checked })} />Required</label><button type="button" aria-label="Delete check" onClick={() => patch({ checks: task.checks.filter((checkItem) => checkItem.id !== entry.id) })} className="text-[#89948c] hover:text-red-700"><Trash2 size={14} /></button><input placeholder="Completed by" value={entry.completedBy} onChange={(event) => setCheck(entry.id, { completedBy: event.target.value })} className={inputClass} /><input type="date" aria-label="Check completion date" value={entry.completionDate} onChange={(event) => setCheck(entry.id, { completionDate: event.target.value })} className={inputClass} /><input placeholder="Check notes" value={entry.notes} onChange={(event) => setCheck(entry.id, { notes: event.target.value })} className={`${inputClass} sm:col-span-2`} /></div>)}</div> : <p className="text-xs text-[#89948c]">No checks added.</p>}</div>
+      <div className="sm:col-span-2 lg:col-span-4"><p className="mb-2 text-xs font-semibold">Task links</p><LinkList links={task.links} onAdd={addLink} onDelete={removeLink} /></div>
+    </div>}
+  </article>;
 }

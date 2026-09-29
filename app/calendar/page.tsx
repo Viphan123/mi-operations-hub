@@ -1,15 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useWorkflows } from "@/data/workflows";
 import { ArrowRight, CalendarClock, CalendarDays, CircleHelp } from "lucide-react";
-import { deliverables, type Deliverable } from "@/data/deliverables";
+import type { WorkflowDeliverable } from "@/data/workflows";
 
-const needsScheduling = deliverables.filter((item) => {
-  const frequency = item.frequency.toLowerCase();
-  return frequency.includes("to be determined") || frequency.includes("not specified");
-});
-
-const scheduledCadence = deliverables.filter((item) => !needsScheduling.includes(item));
-
-function CadenceRow({ item }: { item: Deliverable }) {
+function CadenceRow({ item }: { item: WorkflowDeliverable }) {
   return (
     <Link href={`/deliverables/${item.id}`} className="flex flex-wrap items-center gap-3 border-b border-[#eef1ee] px-4 py-3.5 last:border-0 hover:bg-[#fafbfa] sm:px-5">
       <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#edf4ee] text-[#287b4f]"><CalendarDays size={15} /></span>
@@ -24,12 +20,19 @@ function CadenceRow({ item }: { item: Deliverable }) {
 }
 
 export default function CalendarPage() {
+  const { items } = useWorkflows();
+  const needsScheduling = items.filter((item) => {
+    const frequency = item.frequency.toLowerCase();
+    return frequency.includes("to be determined") || frequency.includes("not specified");
+  });
+  const scheduledCadence = items.filter((item) => !needsScheduling.includes(item));
+  const scheduledCount = items.filter((item) => item.nextDueDate).length;
   return (
     <div className="page-enter space-y-6">
       <section>
         <h2 className="page-title">Schedule overview</h2>
         <p className="page-description mt-2">Review recurring work and meeting-linked reporting schedules.</p>
-        <p className="mt-1 text-xs text-[#89948c]">Specific next due dates have not yet been assigned in the deliverable register.</p>
+        <p className="mt-1 text-xs text-[#89948c]">{scheduledCount} deliverables have a next due date. See task deadlines on each deliverable.</p>
       </section>
 
       <section className="overflow-hidden rounded-lg border border-[#e4e9e4] bg-white">

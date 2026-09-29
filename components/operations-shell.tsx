@@ -5,11 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, Bell, BookOpen, CalendarDays, ChevronDown, CircleHelp, LayoutDashboard, Menu, Search, Settings2, Users, X, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deliverables } from "@/data/deliverables";
+import { useWorkflows } from "@/data/workflows";
 
 const navigation = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Deliverables", href: "/deliverables", icon: ClipboardList, count: String(deliverables.length) },
+  { label: "Deliverables", href: "/deliverables", icon: ClipboardList, count: true },
   { label: "Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Knowledge Base", href: "/knowledge-base", icon: BookOpen },
 ];
@@ -24,6 +24,7 @@ const titles: Record<string, string> = {
 
 export function OperationsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { items } = useWorkflows();
   const [mobileOpen, setMobileOpen] = useState(false);
   const title = titles[pathname] ?? (pathname.startsWith("/deliverables/") ? "Deliverable Details" : "Dashboard");
 
@@ -45,7 +46,7 @@ export function OperationsShell({ children }: { children: React.ReactNode }) {
             {navigation.map(({ label, href, icon: Icon, count }) => {
               const active = href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
               return <Link key={href} href={href} onClick={() => setMobileOpen(false)} aria-current={active ? "page" : undefined} className={cn("group relative flex h-10 items-center gap-3 rounded-md px-3 text-[13px] font-medium transition", active ? "bg-[#2c4937] text-white before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[#a9d78a]" : "text-[#bfcbc2] hover:bg-white/[.06] hover:text-white")}>
-                <Icon size={17} strokeWidth={1.8} className={active ? "text-[#a9d78a]" : "text-[#8ea095] group-hover:text-white"} /><span className="flex-1">{label}</span>{count && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-[#d5dfd8]">{count}</span>}
+                <Icon size={17} strokeWidth={1.8} className={active ? "text-[#a9d78a]" : "text-[#8ea095] group-hover:text-white"} /><span className="flex-1">{label}</span>{count && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-[#d5dfd8]">{items.length}</span>}
               </Link>;
             })}
           </nav>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OperationsShell } from "@/components/operations-shell";
+import { WorkflowProvider } from "@/data/workflows";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <OperationsShell>{children}</OperationsShell>
+        <WorkflowProvider><OperationsShell>{children}</OperationsShell></WorkflowProvider>
       </body>
     </html>
   );

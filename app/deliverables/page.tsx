@@ -3,16 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CalendarDays, ChevronDown, FilterX, Search } from "lucide-react";
-import { deliverableCategories, deliverables, type Deliverable, type DeliverableStatus } from "@/data/deliverables";
+import { deliverableCategories } from "@/data/deliverables";
+import { useWorkflows, type WorkflowDeliverable } from "@/data/workflows";
 
-const frequencies = [...new Set(deliverables.map((item) => item.frequency))].sort((first, second) => first.localeCompare(second));
-const owners = [...new Set(deliverables.map((item) => item.owner))].sort((first, second) => first.localeCompare(second));
-const statuses = [...new Set(deliverables.map((item) => item.status))].sort((first, second) => first.localeCompare(second));
-
-const statusStyles: Record<DeliverableStatus, string> = {
-  "Not started": "bg-[#eef2ee] text-[#5f6d63]",
-  "In progress": "bg-[#e9f1f7] text-[#456f8b]",
-  "Needs scheduling": "bg-[#fff2e5] text-[#a36a2e]",
+const statusStyles: Record<string, string> = {
+  "Not started": "bg-[#eef2ee] text-[#5f6d63]", "In progress": "bg-[#e9f1f7] text-[#456f8b]",
+  "Needs scheduling": "bg-[#fff2e5] text-[#a36a2e]", "Completed": "bg-[#e7f3eb] text-[#287b4f]",
 };
 
 function formatDueDate(date: string | null) {
@@ -53,12 +49,12 @@ function FilterSelect({
   );
 }
 
-function DeliverableCard({ item }: { item: Deliverable }) {
+function DeliverableCard({ item }: { item: WorkflowDeliverable }) {
   return (
     <article className="flex min-h-[248px] flex-col rounded-lg border border-[#e4e9e4] bg-white p-5 shadow-[0_1px_2px_rgba(24,35,29,.03)] transition hover:border-[#cbd9cd] hover:shadow-[0_5px_18px_rgba(24,35,29,.06)]">
       <div className="flex flex-wrap items-start justify-between gap-2.5">
         <span className="inline-flex max-w-full rounded-full bg-[#edf4ee] px-2.5 py-1 text-[10px] font-semibold leading-4 text-[#287b4f]">{item.category}</span>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusStyles[item.status]}`}>{item.status}</span>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusStyles[item.status] ?? "bg-[#eef2ee] text-[#5f6d63]"}`}>{item.status}</span>
       </div>
       <h2 className="display-font mt-4 text-[15px] font-bold leading-5 text-[#243128]"><Link href={`/deliverables/${item.id}`} className="hover:text-[#287b4f]">{item.name}</Link></h2>
       <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-[#78847c]">{item.description}</p>
@@ -85,11 +81,15 @@ function DeliverableCard({ item }: { item: Deliverable }) {
 }
 
 export default function DeliverablesPage() {
+  const { items: deliverables } = useWorkflows();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [frequency, setFrequency] = useState("all");
   const [owner, setOwner] = useState("all");
   const [status, setStatus] = useState("all");
+  const frequencies = [...new Set(deliverables.map((item) => item.frequency))].sort((first, second) => first.localeCompare(second));
+  const owners = [...new Set(deliverables.map((item) => item.owner))].sort((first, second) => first.localeCompare(second));
+  const statuses = [...new Set(deliverables.map((item) => item.status))].sort((first, second) => first.localeCompare(second));
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredDeliverables = deliverables.filter((item) => {
@@ -126,6 +126,7 @@ export default function DeliverablesPage() {
           <p className="page-description mt-2">Track ownership, progress, and due dates across Market Intelligence.</p>
           <p className="mt-1.5 text-xs tabular-nums text-[#89948c]">{deliverables.length} deliverables in the workspace</p>
         </div>
+        <Link href="/admin" className="inline-flex h-10 items-center rounded-md border border-[#dbe5dc] bg-white px-4 text-sm font-semibold text-[#287b4f] hover:bg-[#edf4ee]">Add deliverable</Link>
       </section>
 
       <section className="rounded-lg border border-[#e4e9e4] bg-white p-4 sm:p-5" aria-label="Search and filter deliverables">
