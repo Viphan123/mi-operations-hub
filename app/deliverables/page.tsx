@@ -56,7 +56,7 @@ function DeliverableCard({ item }: { item: WorkflowDeliverable }) {
         <span className="inline-flex max-w-full rounded-full bg-[#edf4ee] px-2.5 py-1 text-[10px] font-semibold leading-4 text-[#287b4f]">{item.category}</span>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusStyles[item.status] ?? "bg-[#eef2ee] text-[#5f6d63]"}`}>{item.status}</span>
       </div>
-      <h2 className="display-font mt-4 text-[15px] font-bold leading-5 text-[#243128]"><Link href={`/deliverables/${item.id}`} className="hover:text-[#287b4f]">{item.name}</Link></h2>
+      <h2 className="display-font mt-4 text-[15px] font-bold leading-5 text-[#243128]"><Link href={`/deliverables/${encodeURIComponent(item.id)}/`} className="hover:text-[#287b4f]">{item.name}</Link></h2>
       <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-[#78847c]">{item.description}</p>
       <dl className="mt-auto grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[#eef1ee] pt-4">
         <div>

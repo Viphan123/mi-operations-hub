@@ -1,14 +1,19 @@
 import type { NextConfig } from "next";
-
-const repositoryName = "mi-operations-hub";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
-	output: "export",
 	trailingSlash: true,
+	experimental: {
+		authInterrupts: true,
+	},
 	images: {
 		unoptimized: true,
 	},
-	...(process.env.NODE_ENV === "production" ? { basePath: `/${repositoryName}` } : {}),
 };
 
-export default nextConfig;
+export default async function configureNext(): Promise<NextConfig> {
+	if (process.env.NODE_ENV === "development") {
+		await initOpenNextCloudflareForDev();
+	}
+	return nextConfig;
+}
