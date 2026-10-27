@@ -7,7 +7,7 @@ import type { WorkflowDeliverable } from "@/data/workflows";
 
 function CadenceRow({ item }: { item: WorkflowDeliverable }) {
   return (
-    <Link href={`/deliverables/${encodeURIComponent(item.id)}/`} className="flex flex-wrap items-center gap-3 border-b border-[#eef1ee] px-4 py-3.5 last:border-0 hover:bg-[#fafbfa] sm:px-5">
+    <Link href={`/deliverables/${encodeURIComponent(item.id)}`} className="flex flex-wrap items-center gap-3 border-b border-[#eef1ee] px-4 py-3.5 last:border-0 hover:bg-[#fafbfa] sm:px-5">
       <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#edf4ee] text-[#287b4f]"><CalendarDays size={15} /></span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-[#2b392f]">{item.name}</span>
